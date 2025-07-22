@@ -24,7 +24,10 @@
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "@types/styled-components": "^5.1.34",
+    "antd": "^5.26.6",
     "electron-updater": "^6.3.9",
+    "masto": "^7.2.0",
+    "sanitize-html": "^2.17.0",
     "styled-components": "^6.1.19"
   },
   "devDependencies": {
@@ -34,6 +37,7 @@
     "@types/node": "^22.16.5",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
+    "@types/sanitize-html": "^2.16.0",
     "@vitejs/plugin-react": "^4.7.0",
     "electron": "^37.2.3",
     "electron-builder": "^25.1.8",

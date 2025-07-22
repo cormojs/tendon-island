@@ -2,6 +2,10 @@ import { app, shell, BrowserWindow, ipcMain, screen, IpcMainEvent } from 'electr
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { readFileSync, existsSync, writeFileSync } from 'fs'
+import { createRestAPIClient, createStreamingAPIClient } from 'masto'
+import { Post } from '../common/types'
+import sanitizeHtml from 'sanitize-html'
 
 function createWindow(): void {
   // Create the browser window.
@@ -35,7 +39,7 @@ function createWindow(): void {
   }
 }
 
-function createToast(message: string = 'Toast notification'): void {
+function createToast(message: string = 'Toast notification') {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize
 
   const toastWindow = new BrowserWindow({
@@ -43,11 +47,11 @@ function createToast(message: string = 'Toast notification'): void {
     height: 100,
     x: width - 320,
     y: height - 100,
-    frame: false,
+    // frame: false,
     alwaysOnTop: true,
     skipTaskbar: true,
-    resizable: false,
-    transparent: true,
+    // resizable: false,
+    // transparent: true,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false
@@ -62,16 +66,6 @@ function createToast(message: string = 'Toast notification'): void {
 
   toastWindow.webContents.once('did-finish-load', () => {
     toastWindow.webContents.send('set-message', message)
-
-    // setTimeout(() => {
-    //   toastWindow.webContents.send('start-fadeout')
-
-    //   setTimeout(() => {
-    //     if (!toastWindow.isDestroyed()) {
-    //       toastWindow.close()
-    //     }
-    //   }, 1000)
-    // }, 4000000)
   })
 
   ipcMain.on("close-toast", (_e) => {
@@ -79,6 +73,7 @@ function createToast(message: string = 'Toast notification'): void {
       toastWindow.close()
     }
   })
+  return toastWindow
 }
 
 // This method will be called when Electron has finished
@@ -105,6 +100,8 @@ app.whenReady().then(() => {
     // dock icon is clicked and there are no other windows open.
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+
+  startSubscribeAll()
 })
 
 // Quit when all windows are closed, except on macOS. There, it's common
@@ -121,3 +118,72 @@ app.on('window-all-closed', () => {
 ipcMain.on('show-toast', (_event: IpcMainEvent, message: string) => {
   createToast(message)
 })
+
+ipcMain.on('save-config', (_e: IpcMainEvent, config: { domain: string, secret: string }) => {
+  const existingConfig: { [domain: string]: { secret: string }; } =
+    existsSync('./config.json') ? JSON.parse(readFileSync('./config.json', { encoding: 'utf-8' })) : {}
+  existingConfig[config.domain] = { secret: config.secret }
+  writeFileSync('./config.json', JSON.stringify(existingConfig))
+})
+
+async function startSubscribeAll() {
+  const toast = createToast()
+
+  if (existsSync('./config.json')) {
+    createToast
+    const file = readFileSync('./config.json', {
+      encoding: 'utf-8'
+    })
+    const config = JSON.parse(file) as {
+      [domain: string]: {
+        secret: string
+      }
+    }
+    await Promise.all(
+      Object.entries(config).map(([domain, {secret}]) =>
+        startSubscribe(domain, secret, (post) => {
+          toast.webContents.send("set-post", post)
+        })
+      )
+    )
+  }
+}
+
+async function startSubscribe(domain: string, secret: string, callback: (post: Post) => void) {
+  const rest = createRestAPIClient({
+    url: `https://${domain}`,
+    accessToken: secret
+  })
+  const instance = await rest.v2.instance.fetch()
+  using streaming = createStreamingAPIClient({
+    streamingApiUrl: instance.configuration.urls.streaming,
+    accessToken: secret
+  })
+  for await (const event of streaming.user.subscribe()) {
+    switch (event.event) {
+      case 'update': {
+        const { content, ...restPayload } = event.payload
+        callback({
+          body: sanitizeHtml(content, {
+            allowedTags: [ 'code', 'b', 'i', 'em', 'strong', 'a' ],
+            allowedAttributes: {
+              'a': ['href']
+            }
+          }),
+          ...restPayload
+        })
+        break
+      }
+      case 'delete':
+      case 'notification':
+      case 'filters_changed':
+      case 'conversation':
+      case 'announcement':
+      case 'announcement.reaction':
+      case 'announcement.delete':
+      case 'status.update':
+      case 'notifications_merged':
+        break
+    }
+  }
+}

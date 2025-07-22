@@ -2,9 +2,14 @@ import Versions from './components/Versions'
 import electronLogo from './assets/electron.svg'
 
 function App(): React.JSX.Element {
-  const ipcHandle = (): void => {
+  const ipcHandle1 = (): void => {
     window.electron.ipcRenderer.send('ping')
     window.electron.ipcRenderer.send('show-toast', "test")
+  }
+
+  const ipcHandle2 = () => {
+    console.log("test")
+    window.electron.ipcRenderer.send("set-message", "test message")
   }
 
   return (
@@ -25,8 +30,13 @@ function App(): React.JSX.Element {
           </a>
         </div>
         <div className="action">
-          <a target="_blank" rel="noreferrer" onClick={ipcHandle}>
+          <a target="_blank" rel="noreferrer" onClick={ipcHandle1}>
             Send IPC
+          </a>
+        </div>
+        <div className="action">
+          <a target="_blank" rel="noreferrer" onClick={ipcHandle2}>
+            Add IPC
           </a>
         </div>
       </div>
