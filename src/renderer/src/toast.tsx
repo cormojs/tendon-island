@@ -1,16 +1,14 @@
 import React, { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import styled from 'styled-components'
-import { Card, Flex } from 'antd'
+import { Avatar, Card, Flex, Image, Space } from 'antd'
 import { Post } from '../../common/types'
+import { Account } from 'masto/dist/esm/mastodon/entities/v1'
 
-interface ToastProps {
-}
 
 const ToastContainer = styled(Flex)`
-  width: 100%;
-  height: 100%;
-  padding: 10px;
+  min-width: 320px;
+  padding: 15px;
   margin: 0;
   background: transparent;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
@@ -19,30 +17,93 @@ const ToastContainer = styled(Flex)`
 
 const StyledCard = styled(Card) <{ fadeOut: boolean }>`
   opacity: ${props => props.fadeOut ? 0 : 1};
-  transition: opacity 1s ease-out;
-  max-width: 200px;
+  transition: opacity 3s ease-out;
+  min-width: 300px;
+  max-width: 300px;
+  max-height: 800px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  background: gray
+  background: rgb(40, 40, 50);
   .ant-card-body {
     padding: 16px 20px;
     font-size: 14px;
+    color: white;
     word-wrap: break-word;
   }
 `
 
-const ToastMessageList: React.FC<{ posts: { message: string, fadeOut: boolean }[] }> = ({ posts }) => {
+const CroppedImage = styled(Image)`
+  width: 80;
+  height 60;
+  overflow: 'hidden';
+  .ant-image-img {
+    width: '100%';
+    height: '100%';
+    objectFit: 'cover';
+    objectPosition: 'center center';
+  }
+`
+
+type MessageProps = {
+  posts: {
+    account: Account & {
+      avatarBlobUrl: string
+    };
+    originalAccount?: Account & {
+      avatarBlobUrl: string
+    }
+    message: string
+    fadeOut: boolean
+    mediaAttachments: Post['mediaAttachments']
+  }[]
+}
+
+const ToastMessageList: React.FC<MessageProps> = ({ posts }) => {
   return (
     <ToastContainer
       vertical
       justify="center"
       align="center"
     >
-      {posts.map(({ message, fadeOut }) =>
+      {posts.map(({ account, originalAccount, message, fadeOut, mediaAttachments }) =>
         <StyledCard
           size="small"
           fadeOut={fadeOut}
         >
-          {message}
+          <Flex vertical={true}>
+            <Space>
+              { originalAccount ?
+                <Flex vertical={true} justify={'end'} align={'end'}>
+                  <Avatar
+                    icon={<img src={account.avatarBlobUrl} width={50} height={50}/>}
+                    shape={'square'}
+                    size={50}
+                  />
+                  <Avatar
+                    icon={<img src={originalAccount.avatarBlobUrl} width={20} height={20}/>}
+                    shape={'square'}
+                    size={20}
+                  />
+                </Flex> : <Avatar
+                  icon={<img src={account.avatarBlobUrl} width={50} height={50}/>}
+                  shape={'square'}
+                  size={50}
+                />
+              }
+              <span
+                dangerouslySetInnerHTML={{ __html: message }}
+              />
+            </Space>
+            { mediaAttachments.length !== 0 ?
+              <Space>
+                {
+                  mediaAttachments.map(({ array, mediaType }) => (
+                    <CroppedImage
+                      src={URL.createObjectURL(new Blob([array], { type: mediaType }))}
+                    />
+                  ))
+                }
+              </Space> : <></>}
+          </Flex>
         </StyledCard>
       )}
     </ToastContainer>
@@ -50,62 +111,57 @@ const ToastMessageList: React.FC<{ posts: { message: string, fadeOut: boolean }[
   )
 }
 
-const Toast: React.FC<ToastProps> = ({ }) => {
-  const [posts, setPosts] = useState<{ message: string; fadeOut: boolean; }[]>([{ message: "test", fadeOut: false }])
+const Toast: React.FC<{}> = ({ }) => {
+  const [posts, setPosts] = useState<MessageProps['posts']>([])
   const { ipcRenderer } = window.require('electron')
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setPosts((prev) => {
-        if (prev.length === 0) {
-          return []
-        } else {
+      if (posts.length !== 0) {
+        setPosts((prev) => {
           const next = prev.slice(0, -1)
           return next
-        }
-      })
-    }, 4000)
+        })
+      }
+    }, 10000)
     return () => {
       clearInterval(interval)
     }
-  }, [])
+  }, [posts])
 
   useEffect(() => {
-    const handleSetMessage = (_event: any, message: string) => {
-      console.log(message)
-      setPosts((prev) => {
-        const next = [{ message, fadeOut: false }, ...prev]
-        next[next.length - 1].fadeOut = true
-        return next
-      })
-    }
-
     const handleSetPost = (_event: any, post: Post) => {
       setPosts((prev) => {
+        const { avatarArray, avatarType, ...rest } = post.reblog ? post.reblog.account : post.account
+        const { avatarArray: reblogAvatarArray, avatarType: reblogAvatarType, ...reblogAccountRest } = post.reblog ? post.account : {
+          avatarArray: null,
+          avatarType: null
+        }
+
         const next = [{
-          message: post.body ?? '',
+          account: {
+            ...rest,
+            avatarBlobUrl: URL.createObjectURL(new Blob([avatarArray], { type: avatarType }))
+          },
+          originalAccount: reblogAvatarArray && reblogAvatarType && 'id' in reblogAccountRest
+           ? {
+            ...reblogAccountRest,
+            avatarBlobUrl: URL.createObjectURL(new Blob([reblogAvatarArray], { type: reblogAvatarType }))
+          } : undefined,
+          message: post?.reblog?.body ?? post.body ?? '',
+          mediaAttachments: post?.reblog?.mediaAttachments ?? post.mediaAttachments,
           fadeOut: false
         }, ...prev]
-        next[next.length - 1].fadeOut = true
-        return next
+        return next.slice(0, 5)
       })
     }
 
-    ipcRenderer.on('set-message', handleSetMessage)
     ipcRenderer.on('set-post', handleSetPost)
 
-    const timeout = posts.length === 0 ? setTimeout(() => {
-      ipcRenderer.send("close-toast")
-    }, 1000) : null
-
     return () => {
-      ipcRenderer.removeListener('set-message', handleSetMessage)
       ipcRenderer.removeListener('set-post', handleSetPost)
-      if (timeout !== null) {
-        clearTimeout(timeout)
-      }
     }
-  }, [])
+  }, [posts])
 
   return <ToastMessageList posts={posts} />
 }

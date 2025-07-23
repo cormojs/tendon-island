@@ -6,8 +6,9 @@ import { readFileSync, existsSync, writeFileSync } from 'fs'
 import { createRestAPIClient, createStreamingAPIClient } from 'masto'
 import { Post } from '../common/types'
 import sanitizeHtml from 'sanitize-html'
+import { Status } from 'masto/dist/esm/mastodon/entities/v1'
 
-function createWindow(): void {
+function createWindow() {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
     width: 900,
@@ -37,24 +38,28 @@ function createWindow(): void {
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
+
+  return mainWindow
 }
 
 function createToast(message: string = 'Toast notification') {
-  const { width, height } = screen.getPrimaryDisplay().workAreaSize
+  const { width } = screen.getPrimaryDisplay().workAreaSize
 
   const toastWindow = new BrowserWindow({
-    width: 300,
-    height: 100,
-    x: width - 320,
-    y: height - 100,
-    // frame: false,
+    useContentSize: true,
+    width: 500,
+    height: 200,
+    x: width - 500,
+    y: 100,
+    frame: false,
     alwaysOnTop: true,
     skipTaskbar: true,
-    // resizable: false,
-    // transparent: true,
+    resizable: true,
+    transparent: true,
     webPreferences: {
       nodeIntegration: true,
-      contextIsolation: false
+      contextIsolation: false,
+      enablePreferredSizeMode: true
     }
   })
 
@@ -73,6 +78,12 @@ function createToast(message: string = 'Toast notification') {
       toastWindow.close()
     }
   })
+
+  toastWindow.webContents.on('preferred-size-changed', (_e, { width, height }) => {
+    // 必要なら余白を足して調整
+    toastWindow.setContentSize(width + 20, height, /*animate*/ true);
+  });
+
   return toastWindow
 }
 
@@ -93,7 +104,10 @@ app.whenReady().then(() => {
   // IPC test
   ipcMain.on('ping', () => console.log('pong'))
 
-  createWindow()
+  const window = createWindow()
+  window.on('close', () => {
+    app.quit()
+  })
 
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the
@@ -149,6 +163,34 @@ async function startSubscribeAll() {
   }
 }
 
+function sanitizeContent(content: string): string {
+  return sanitizeHtml(content, {
+    allowedTags: [ 'p', 'code', 'b', 'i', 'em', 'strong', 'a', 'blockquote', 'br' ],
+    allowedAttributes: {
+      'a': ['href']
+    }
+  })
+}
+
+async function convertedMediaAttachments(attachments: Status['mediaAttachments']): Promise<(Status['mediaAttachments'][number] & {
+  array: Uint8Array,
+  mediaType: string
+})[]> {
+  const converted = Promise.all(
+    attachments.map(async (media) => {
+      const result = await fetch(media.previewUrl)
+      const array = await result.bytes()
+
+      return {
+        ...media,
+        array,
+        mediaType: result.headers['Content-Type'] ?? 'image/png'
+      }
+    })
+  )
+  return converted
+}
+
 async function startSubscribe(domain: string, secret: string, callback: (post: Post) => void) {
   const rest = createRestAPIClient({
     url: `https://${domain}`,
@@ -162,14 +204,49 @@ async function startSubscribe(domain: string, secret: string, callback: (post: P
   for await (const event of streaming.user.subscribe()) {
     switch (event.event) {
       case 'update': {
-        const { content, ...restPayload } = event.payload
+        const {
+          content,
+          account,
+          reblog,
+          mediaAttachments,
+          ...restPayload
+        } = event.payload
+
+        const avatarResult = await fetch(account.avatar)
+        const avatarArray = await avatarResult.bytes()
+        const avatarType = avatarResult.headers['Content-Type'] ?? 'image/png'
+
+        const reblogMediaAttachments = reblog ? await convertedMediaAttachments(reblog.mediaAttachments) : null
+        const {
+          account: reblogAccount,
+          content: reblogContent,
+          mediaAttachments: _,
+          ...reblogRestPayload
+        } = reblog ?? { content: null, account: null, mediaAttachments: [] }
+        const reblogAvatarResult= reblog ? await fetch(reblog.account.avatar) : null
+        const reblogAvatarArray = await reblogAvatarResult?.bytes()
+        const reblogAvatarType = reblogAvatarResult ? reblogAvatarResult.headers['Content-Type'] ?? 'image/png' : null
+
+        console.dir(event.payload)
+
         callback({
-          body: sanitizeHtml(content, {
-            allowedTags: [ 'code', 'b', 'i', 'em', 'strong', 'a' ],
-            allowedAttributes: {
-              'a': ['href']
-            }
-          }),
+          body: sanitizeContent(content),
+          account: {
+            ...account,
+            avatarArray,
+            avatarType
+          },
+          reblog: reblogAccount && reblogContent && reblogAvatarArray && reblogAvatarType && reblogMediaAttachments ? {
+            body: sanitizeContent(reblogContent),
+            account: {
+              ...reblogAccount,
+              avatarArray: reblogAvatarArray,
+              avatarType: reblogAvatarType
+            },
+            mediaAttachments: reblogMediaAttachments,
+            ...reblogRestPayload
+          } : undefined,
+          mediaAttachments: await convertedMediaAttachments(mediaAttachments),
           ...restPayload
         })
         break
