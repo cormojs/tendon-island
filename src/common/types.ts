@@ -22,3 +22,8 @@ export type Post = Omit<Status, "reblog" | "content" | "account" | "mediaAttachm
     mediaType: string
   })[]
 }
+
+export interface AuthInfo {
+  domain: string
+  acct: string
+}
