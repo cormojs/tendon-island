@@ -1,7 +1,7 @@
 import { createRestAPIClient, createStreamingAPIClient, createOAuthAPIClient } from 'masto'
 import { Post } from '../common/types'
 import { sanitizeContent, convertedMediaAttachments } from './utils'
-import { shell, app, dialog } from 'electron'
+import { shell, app, dialog, BrowserWindow } from 'electron'
 import { saveConfig } from './config-manager'
 
 
@@ -91,7 +91,7 @@ export async function startSubscribe(domain: string, secret: string, callback: (
 }
 
 
-export async function startOAuthFlow(domain: string): Promise<string> {
+export async function startOAuthFlow(domain: string, mainWindow: BrowserWindow): Promise<string> {
   try {
     const apiClient = createRestAPIClient({
       url: `https://${domain}`
@@ -116,7 +116,7 @@ export async function startOAuthFlow(domain: string): Promise<string> {
     const authUrl = `https://${domain}/oauth/authorize?client_id=${appData.clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=read+write+follow+push`
 
     // カスタムプロトコルハンドラーを設定
-    setupCustomProtocolHandler(domain, oauthAppCredentials)
+    setupCustomProtocolHandler(mainWindow, domain, oauthAppCredentials)
 
     // 外部ブラウザで認証URLを開く
     shell.openExternal(authUrl)
@@ -129,7 +129,7 @@ export async function startOAuthFlow(domain: string): Promise<string> {
   }
 }
 
-function setupCustomProtocolHandler(domain: string, oauthAppCredentials: {
+function setupCustomProtocolHandler(mainWindow: BrowserWindow, domain: string, oauthAppCredentials: {
     clientId: string | null | undefined;
     clientSecret: string | null | undefined;
     redirectUri: string;
@@ -143,7 +143,6 @@ function setupCustomProtocolHandler(domain: string, oauthAppCredentials: {
 
   const urlHandler = async (_, url: string) => {
     try {
-      console.log(url)
       const urlObj = new URL(url)
       if (urlObj.protocol === 'tendon-island:' && urlObj.pathname === '/callback') {
         const code = urlObj.searchParams.get('code')
@@ -169,8 +168,7 @@ function setupCustomProtocolHandler(domain: string, oauthAppCredentials: {
               clientSecret: oauthAppCredentials.clientSecret ?? "",
               secret: tokenResult.accessToken
             })
-            console.log("認証OK")
-            dialog.showErrorBox("認証OK", "Authorization Completed")
+            mainWindow.webContents.send("oauth-complete")
           } catch (error) {
             console.error('Token exchange failed:', error)
             dialog.showErrorBox('認証エラー', `認証トークンの取得に失敗しました: ${error instanceof Error ? error.message : String(error)}`)
@@ -189,7 +187,6 @@ function setupCustomProtocolHandler(domain: string, oauthAppCredentials: {
   // カスタムURIスキーマからのコールバックを処理
   app.once('open-url', urlHandler)
   ;(app as any).once('open-url-win', (o: { url: string }) => {
-    console.log(o)
     urlHandler(undefined, o.url)
   })
 }

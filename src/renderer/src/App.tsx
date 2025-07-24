@@ -10,19 +10,29 @@ function App(): React.JSX.Element {
   const [error, setError] = useState('')
   const [authInfo, setAuthInfo] = useState<AuthInfo[]>([])
 
-  useEffect(() => {
-    const loadAuthInfo = async () => {
-      try {
-        const info = await window.electron.ipcRenderer.invoke('get-auth-info')
-        if (info && info.length > 0) {
-          setAuthInfo(info)
-        }
-      } catch (error) {
-        console.error('Failed to load auth info:', error)
+  const loadAuthInfo = async () => {
+    try {
+      const info = await window.electron.ipcRenderer.invoke('get-auth-info')
+      if (info && info.length > 0) {
+        setAuthInfo(info)
       }
+    } catch (error) {
+      console.error('Failed to load auth info:', error)
+    }
+  }
+
+  useEffect(() => {
+    loadAuthInfo()
+
+    const handleAuthComplete = () => {
+      loadAuthInfo()
     }
 
-    loadAuthInfo()
+    window.electron.ipcRenderer.on('oauth-complete', handleAuthComplete)
+
+    return () => {
+      window.electron.ipcRenderer.removeListener('oauth-complete', handleAuthComplete)
+    }
   }, [])
 
   const handleOAuthLogin = async () => {
@@ -51,6 +61,7 @@ function App(): React.JSX.Element {
   return (
     <Flex
       vertical={true}
+      justify='center'
       style={{
         minHeight: '100vh',
         padding: '20px',
@@ -78,10 +89,6 @@ function App(): React.JSX.Element {
       </Card>
       <Card style={{ width: 400, textAlign: 'center' }}>
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
-          <Text type="secondary">
-            Mastodonサーバーのドメインを入力してログインしてください
-          </Text>
-
           <Space direction="vertical" style={{ width: '100%' }}>
             <Input
               placeholder="例: mastodon.social"
@@ -106,10 +113,6 @@ function App(): React.JSX.Element {
               {loading ? '認証中...' : 'ログイン'}
             </Button>
           </Space>
-
-          <Text type="secondary" style={{ fontSize: '12px' }}>
-            このアプリは安全なOAuth認証を使用してMastodonにアクセスします
-          </Text>
         </Space>
       </Card>
     </Flex>

@@ -35,7 +35,6 @@ if (!gotTheLock) {
 
     // WindowsでのURL処理 - コマンドライン引数からURLを取得
     if (process.platform === 'win32') {
-      console.log("cmd", commandLine)
       const url = commandLine.find(arg => arg.startsWith('tendon-island:'))
       if (url !== undefined) {
         // open-urlイベントを手動で発火
@@ -46,7 +45,6 @@ if (!gotTheLock) {
 
   // プロセスが直接起動した場合
   if (process.platform === 'win32') {
-    console.log("argv", process.argv)
     const url = process.argv.find(arg => arg.startsWith('tendon-island:'))
     if (url !== undefined) {
       // open-urlイベントを手動で発火
@@ -86,11 +84,12 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  // Setup IPC handlers
-  setupIpcHandlers()
-
   const window = createWindow()
   mainWindow = window
+
+  // Setup IPC handlers
+  setupIpcHandlers(mainWindow)
+
   window.on('close', () => {
     app.quit()
   })
