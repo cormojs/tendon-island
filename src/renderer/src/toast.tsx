@@ -60,6 +60,15 @@ type MessageProps = {
 }
 
 const ToastMessageList: React.FC<MessageProps> = ({ posts }) => {
+  const handleClick = (event: React.MouseEvent<HTMLSpanElement>) => {
+    const target = event.target as HTMLElement
+    if (target.tagName === 'A' && target.getAttribute('href')) {
+      event.preventDefault()
+      const { shell } = window.require('electron')
+      shell.openExternal(target.getAttribute('href'))
+    }
+  }
+
   return (
     <ToastContainer
       vertical
@@ -93,6 +102,7 @@ const ToastMessageList: React.FC<MessageProps> = ({ posts }) => {
               }
               <span
                 dangerouslySetInnerHTML={{ __html: message }}
+                onClick={handleClick}
               />
             </Space>
             { mediaAttachments.length !== 0 ?
