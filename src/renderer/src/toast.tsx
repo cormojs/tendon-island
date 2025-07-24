@@ -5,6 +5,7 @@ import { Avatar, Card, Flex, Image, Space } from 'antd'
 import { Post } from '../../common/types'
 import { Account } from 'masto/dist/esm/mastodon/entities/v1'
 
+const TIME_INTERVAL = 5000
 
 const ToastContainer = styled(Flex)`
   min-width: 320px;
@@ -135,7 +136,7 @@ const Toast: React.FC<{}> = ({ }) => {
           return next
         })
       }
-    }, 10000)
+    }, TIME_INTERVAL)
     return () => {
       clearInterval(interval)
     }
