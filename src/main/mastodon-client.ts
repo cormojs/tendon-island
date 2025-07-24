@@ -5,7 +5,7 @@ import { shell, app, dialog, BrowserWindow } from 'electron'
 import { saveConfig } from './config-manager'
 
 
-export async function startSubscribe(domain: string, secret: string, callback: (post: Post) => void): Promise<void> {
+export async function startSubscribe(domain: string, secret: string, signal: AbortSignal, callback: (post: Post) => void): Promise<void> {
   try {
     const rest = createRestAPIClient({
       url: `https://${domain}`,
@@ -16,7 +16,11 @@ export async function startSubscribe(domain: string, secret: string, callback: (
       streamingApiUrl: instance.configuration.urls.streaming,
       accessToken: secret
     })
-    for await (const event of streaming.user.subscribe()) {
+    const subscription = streaming.user.subscribe()
+
+    signal.addEventListener('abort', () => subscription.unsubscribe())
+
+    for await (const event of subscription) {
       switch (event.event) {
         case 'update': {
           try {
@@ -28,7 +32,7 @@ export async function startSubscribe(domain: string, secret: string, callback: (
               ...restPayload
             } = event.payload
 
-            const avatarResult = await fetch(account.avatar)
+            const avatarResult = await fetch(account.avatar, { signal })
             const avatarArray = await avatarResult.bytes()
             const avatarType = avatarResult.headers['Content-Type'] ?? 'image/png'
 
@@ -39,7 +43,7 @@ export async function startSubscribe(domain: string, secret: string, callback: (
               mediaAttachments: _,
               ...reblogRestPayload
             } = reblog ?? { content: null, account: null, mediaAttachments: [] }
-            const reblogAvatarResult= reblog ? await fetch(reblog.account.avatar) : null
+            const reblogAvatarResult= reblog ? await fetch(reblog.account.avatar, { signal }) : null
             const reblogAvatarArray = await reblogAvatarResult?.bytes()
             const reblogAvatarType = reblogAvatarResult ? reblogAvatarResult.headers['Content-Type'] ?? 'image/png' : null
 

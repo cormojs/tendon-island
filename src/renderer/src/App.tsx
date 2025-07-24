@@ -15,6 +15,7 @@ function App(): React.JSX.Element {
       const info = await window.electron.ipcRenderer.invoke('get-auth-info')
       if (info && info.length > 0) {
         setAuthInfo(info)
+        window.electron.ipcRenderer.send("start-subscribe")
       }
     } catch (error) {
       console.error('Failed to load auth info:', error)

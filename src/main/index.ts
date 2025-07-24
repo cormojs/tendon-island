@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, ipcMain } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { createWindow, createToast } from './window-manager'
 import { setupIpcHandlers } from './ipc-handlers'
@@ -55,14 +55,23 @@ if (!gotTheLock) {
 
 async function startSubscribeAll(): Promise<void> {
   const toast = createToast()
+  const abort = new AbortController()
+  const abortListener = () => {
+    abort.abort()
+    toast.close()
+  }
+
+  ipcMain.once('end-subscribe', abortListener)
 
   const config = loadConfig()
   if (config) {
     await Promise.all(
       Object.entries(config).map(([domain, acccounts]) =>
         Object.entries(acccounts).map(([_, { secret }]) =>
-          startSubscribe(domain, secret, (post) => {
-            toast.webContents.send("set-post", post)
+          startSubscribe(domain, secret, abort.signal, (post) => {
+            if (!toast.isDestroyed()) {
+              toast.webContents.send("set-post", post)
+            }
           })
         )
       )
@@ -100,7 +109,7 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 
-  startSubscribeAll()
+  ipcMain.addListener("start-subscribe", () => startSubscribeAll())
 })
 
 // Quit when all windows are closed, except on macOS. There, it's common
