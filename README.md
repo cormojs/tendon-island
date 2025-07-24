@@ -32,3 +32,18 @@ $ npm run build:mac
 # For Linux
 $ npm run build:linux
 ```
+
+### 使い方
+
+- Mastodonの設定画面からアプリを作ってアクセストークンを取得する
+- config.json に以下のような形で保存する
+
+```json
+{
+  "example.com": {
+    "secret": "<your_access_token>"
+  }
+}
+```
+
+あとは起動すれば勝手にTLの受信が始まる。メインウィンドウを閉じるとアプリケーションが終了する。
