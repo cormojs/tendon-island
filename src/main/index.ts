@@ -5,16 +5,68 @@ import { setupIpcHandlers } from './ipc-handlers'
 import { loadConfig } from './config-manager'
 import { startSubscribe } from './mastodon-client'
 
+let mainWindow: BrowserWindow | null = null
+
+// カスタムプロトコルハンドラーを設定
+if (process.defaultApp) {
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient('tendon-island', process.execPath, [process.argv[1]])
+  }
+} else {
+  app.setAsDefaultProtocolClient('tendon-island')
+}
+
+// 二重起動を防ぐ
+const gotTheLock = app.requestSingleInstanceLock()
+
+if (!gotTheLock) {
+  // 既にアプリが起動している場合は終了
+  app.quit()
+} else {
+  // 二番目のインスタンスが起動しようとした時の処理
+  app.on('second-instance', (_, commandLine) => {
+    // 既存のウィンドウがある場合はフォーカスを当てる
+    if (mainWindow !== null) {
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore()
+      }
+      mainWindow.focus()
+    }
+
+    // WindowsでのURL処理 - コマンドライン引数からURLを取得
+    if (process.platform === 'win32') {
+      console.log("cmd", commandLine)
+      const url = commandLine.find(arg => arg.startsWith('tendon-island:'))
+      if (url !== undefined) {
+        // open-urlイベントを手動で発火
+        app.emit("open-url-win", { url })
+      }
+    }
+  })
+
+  // プロセスが直接起動した場合
+  if (process.platform === 'win32') {
+    console.log("argv", process.argv)
+    const url = process.argv.find(arg => arg.startsWith('tendon-island:'))
+    if (url !== undefined) {
+      // open-urlイベントを手動で発火
+      app.emit('open-url-win', { url })
+    }
+  }
+}
+
 async function startSubscribeAll(): Promise<void> {
   const toast = createToast()
 
   const config = loadConfig()
   if (config) {
     await Promise.all(
-      Object.entries(config).map(([domain, {secret}]) =>
-        startSubscribe(domain, secret, (post) => {
-          toast.webContents.send("set-post", post)
-        })
+      Object.entries(config).map(([domain, acccounts]) =>
+        Object.entries(acccounts).map(([_, { secret }]) =>
+          startSubscribe(domain, secret, (post) => {
+            toast.webContents.send("set-post", post)
+          })
+        )
       )
     )
   }
@@ -38,6 +90,7 @@ app.whenReady().then(() => {
   setupIpcHandlers()
 
   const window = createWindow()
+  mainWindow = window
   window.on('close', () => {
     app.quit()
   })

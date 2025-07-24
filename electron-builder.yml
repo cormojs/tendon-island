@@ -11,6 +11,10 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
+protocols:
+  - name: tendon-island
+    schemes:
+      - tendon-island
 win:
   executableName: tendon-island
 nsis:
@@ -25,6 +29,10 @@ mac:
     - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
     - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+    - CFBundleURLTypes:
+        - CFBundleURLName: tendon-island
+          CFBundleURLSchemes:
+            - tendon-island
   notarize: false
 dmg:
   artifactName: ${name}-${version}.${ext}
@@ -35,6 +43,8 @@ linux:
     - deb
   maintainer: electronjs.org
   category: Utility
+  desktop:
+    MimeType: x-scheme-handler/tendon-island
 appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false

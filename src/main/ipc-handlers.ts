@@ -1,6 +1,6 @@
 import { ipcMain, IpcMainEvent } from 'electron'
 import { createToast } from './window-manager'
-import { saveConfig } from './config-manager'
+import { startOAuthFlow } from './mastodon-client'
 
 export function setupIpcHandlers(): void {
   // IPC test
@@ -10,7 +10,11 @@ export function setupIpcHandlers(): void {
     createToast(message)
   })
 
-  ipcMain.on('save-config', (_e: IpcMainEvent, config: { domain: string, secret: string }) => {
-    saveConfig(config)
+  ipcMain.on('start-oauth', async (_event: IpcMainEvent, domain: string) => {
+    try {
+      await startOAuthFlow(domain)
+    } catch (error) {
+      console.error('OAuth flow error:', error)
+    }
   })
 }
